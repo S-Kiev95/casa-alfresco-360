@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Casa Alfresco 360</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Concepto: el panorama ocupa toda la pantalla; la interfaz flota en paneles translúcidos en las esquinas
+   y un riel de estancias abajo. Tema único oscuro, deliberado: es un visor inmersivo. */
+:root {
+  --ink: #0d0f0e;
+  --panel: rgba(15, 17, 16, 0.74);
+  --panel-solid: #141716;
+  --line: rgba(243, 242, 238, 0.14);
+  --text: #f3f2ee;
+  --muted: #a7aba4;
+  --accent: #b3c9ad;
+  --accent-ink: #12160f;
+  --font-display: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --font-ui: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 14px;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--ink); color: var(--text); font-family: var(--font-ui); overflow: hidden; }
+#view { position: fixed; inset: 0; touch-action: none; cursor: grab; }
+#view.drag { cursor: grabbing; }
+#view canvas { display: block; width: 100%; height: 100%; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+  backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); }
+#head { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px));
+  max-width: min(440px, calc(100vw - 32px)); padding: 14px 18px 14px; display: grid; gap: 4px; z-index: 5; }
+#head .eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+#room { font-family: var(--font-display); font-size: clamp(28px, 4.2vw, 40px); line-height: 1.02; text-wrap: balance; margin: 0; font-weight: 400; }
+#desc { margin: 2px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; max-width: 52ch; }
+#coords { font-family: var(--font-data); font-size: 11px; color: var(--muted); letter-spacing: 0.02em; }
+#tools { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; gap: 6px; padding: 6px; z-index: 5; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 32px); }
+button { font: inherit; color: inherit; }
+.tbtn { background: transparent; border: 0; border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text); }
+.tbtn:hover { background: rgba(243, 242, 238, 0.08); }
+.tbtn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.tbtn:focus-visible, .chip:focus-visible, .hs:focus-visible, .dot:focus-visible, .close:focus-visible, .thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#map { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  width: min(330px, 42vw); padding: 8px; z-index: 4; }
+#mapwrap { position: relative; border-radius: 9px; overflow: hidden; }
+#mapwrap img { display: block; width: 100%; height: auto; }
+.dot { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; border: 2px solid var(--text);
+  background: rgba(13, 15, 14, 0.55); padding: 0; cursor: pointer; }
+.dot.on { background: var(--text); border-color: var(--ink); width: 16px; height: 16px; margin: -8px 0 0 -8px; z-index: 2;
+  box-shadow: 0 0 0 3px var(--accent), 0 2px 8px rgba(0, 0, 0, 0.5); }
+#cone { position: absolute; width: 84px; height: 84px; margin: -42px 0 0 -42px; pointer-events: none; z-index: 1;
+  background: conic-gradient(from -32deg, rgba(243, 242, 238, 0.62) 0deg, rgba(243, 242, 238, 0.62) 64deg, transparent 64deg);
+  -webkit-mask: radial-gradient(circle, #000 0 62%, transparent 63%); mask: radial-gradient(circle, #000 0 62%, transparent 63%); }
+#maplabel { display: flex; justify-content: space-between; gap: 8px; padding: 6px 4px 0; font-size: 11px; color: var(--muted); }
+#maplabel span:last-child { font-family: var(--font-data); }
+#rail { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  display: flex; gap: 8px; overflow-x: auto; z-index: 4; scrollbar-width: none;
+  background: linear-gradient(to top, rgba(13, 15, 14, 0.85), rgba(13, 15, 14, 0)); }
+#rail::-webkit-scrollbar { display: none; }
+.chip { flex: 0 0 auto; border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 9px 14px;
+  font-size: 13px; cursor: pointer; white-space: nowrap; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.chip[aria-current="true"] { background: var(--text); color: var(--ink); border-color: var(--text); }
+#hotspots { position: fixed; inset: 0; pointer-events: none; z-index: 3; }
+.hs { position: absolute; pointer-events: auto; transform: translate(-50%, -50%); border: 0; background: none; padding: 0; cursor: pointer;
+  display: grid; justify-items: center; gap: 6px; }
+.hs .ring { width: 46px; height: 46px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.92);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.35) 0 22%, rgba(255, 255, 255, 0.10) 23% 100%);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.35); transition: transform 0.18s ease, background 0.18s ease; }
+.hs .tag { font-size: 12px; font-weight: 500; padding: 4px 9px; border-radius: 999px; background: rgba(13, 15, 14, 0.72); color: var(--text);
+  white-space: nowrap; opacity: 0.0; transform: translateY(-3px); transition: opacity 0.18s ease, transform 0.18s ease; }
+.hs:hover .ring, .hs:focus-visible .ring { transform: scale(1.12); background: radial-gradient(circle, var(--accent) 0 26%, rgba(179, 201, 173, 0.18) 27% 100%); }
+.hs:hover .tag, .hs:focus-visible .tag, .hs.near .tag { opacity: 1; transform: none; }
+#fade { position: fixed; inset: 0; background: var(--ink); opacity: 0; pointer-events: none; transition: opacity 0.28s ease; z-index: 2; }
+#loading { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); font-family: var(--font-data); font-size: 12px;
+  color: var(--muted); z-index: 6; padding: 10px 14px; }
+#hint { position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 4;
+  font-size: 12.5px; color: var(--text); padding: 8px 14px; border-radius: 999px; transition: opacity 0.6s ease; white-space: nowrap; }
+/* capas: galería e informe */
+.sheet { position: fixed; inset: 0; z-index: 10; background: rgba(9, 10, 10, 0.92); overflow-y: auto;
+  padding: calc(22px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet-in { max-width: 1180px; margin: 0 auto; display: grid; gap: 22px; }
+.sheet-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.sheet h2 { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 4vw, 44px); margin: 0; text-wrap: balance; }
+.close { border: 1px solid var(--line); background: var(--panel-solid); border-radius: 999px; padding: 8px 14px; cursor: pointer; font-size: 13px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; }
+.thumb { display: grid; gap: 8px; text-align: left; border: 0; padding: 0; background: none; cursor: zoom-in; min-width: 0; }
+.thumb img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 10px; background: var(--panel-solid); }
+.thumb b { font-weight: 500; font-size: 14px; }
+.thumb span { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+#lightbox { position: fixed; inset: 0; z-index: 12; background: rgba(5, 6, 6, 0.96); display: grid; place-items: center; padding: 18px; cursor: zoom-out; }
+#lightbox img { max-width: 100%; max-height: calc(100% - 46px); border-radius: 8px; }
+#lightbox p { margin: 10px 0 0; color: var(--muted); font-size: 13px; text-align: center; }
+.report { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; }
+.report section { border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; background: var(--panel-solid); min-width: 0; }
+.report h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.report p, .report li { color: #d9d9d3; font-size: 14px; line-height: 1.55; }
+.report ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.tbl { overflow-x: auto; }
+.tbl table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tbl th, .tbl td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl th { color: var(--muted); font-weight: 500; }
+.tbl td.n { font-family: var(--font-data); font-size: 12px; }
+@media (max-width: 640px) {
+  #desc { display: none; }
+  #head { padding: 11px 14px; right: max(16px, env(safe-area-inset-right, 0px)); max-width: none; }
+  #tools { top: auto; bottom: calc(62px + env(safe-area-inset-bottom, 0px)); left: max(16px, env(safe-area-inset-left, 0px));
+    right: max(16px, env(safe-area-inset-right, 0px)); max-width: none; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; }
+  #tools::-webkit-scrollbar { display: none; }
+  .tbtn { flex: 0 0 auto; padding: 7px 11px; }
+  .desk { display: none; }
+  #map { width: min(58vw, 260px); bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+  #hint { bottom: calc(118px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) { .hs .ring, .hs .tag, #fade, #hint { transition: none; } }
+</style>
+
+<div id="view" aria-label="Panorama 360 grados de la estancia actual" role="img"></div>
+<div id="fade"></div>
+<div id="hotspots"></div>
+
+<header id="head" class="panel">
+  <span class="eyebrow">Recorrido 360° · Vivienda de una planta</span>
+  <h1 id="room">Cargando…</h1>
+  <p id="desc"></p>
+  <span id="coords"></span>
+</header>
+
+<nav id="tools" class="panel" aria-label="Herramientas del recorrido">
+  <button class="tbtn" id="bMap" aria-pressed="true">Planta</button>
+  <button class="tbtn" id="bGal" aria-pressed="false">Galería</button>
+  <button class="tbtn" id="bRep" aria-pressed="false">Informe</button>
+  <button class="tbtn" id="bAuto" aria-pressed="false">Giro auto</button>
+  <button class="tbtn desk" id="bFull" aria-pressed="false">Pantalla completa</button>
+</nav>
+
+<aside id="map" class="panel" aria-label="Planta con los puntos del recorrido">
+  <div id="mapwrap"><img id="mapimg" src="planta_tour.jpg" alt="Vista cenital del modelo con los puntos 360"><div id="cone"></div></div>
+  <div id="maplabel"><span>Norte del plano arriba · escala 1:≈100</span><span id="heading">0°</span></div>
+</aside>
+
+<div id="hint" class="panel">Arrastra para mirar · toca un círculo para avanzar</div>
+<div id="loading" class="panel">Cargando panorama…</div>
+<nav id="rail" aria-label="Estancias"></nav>
+
+<div id="gallery" class="sheet" hidden>
+  <div class="sheet-in">
+    <div class="sheet-top"><h2>Renders del modelo</h2><button class="close" data-close="gallery">Volver al recorrido</button></div>
+    <div class="grid" id="gal"></div>
+  </div>
+</div>
+
+<div id="report" class="sheet" hidden>
+  <div class="sheet-in">
+    <div class="sheet-top"><h2>Cómo se reconstruyó</h2><button class="close" data-close="report">Volver al recorrido</button></div>
+    <div class="report">
+      <section>
+        <h3>Método</h3>
+        <p>Modelo 100 % procedural en Blender 5.4 generado por script a partir del plano y las fotos. Muros de dos hojas (revoque fuera, pintura dentro), huecos reales sin booleanas, 83 materiales PBR sin texturas externas, render con Cycles (OptiX) y panoramas equirectangulares de 4096 × 2048.</p>
+      </section>
+      <section>
+        <h3>Escala del plano</h3>
+        <p>Las cotas del plano no son coherentes entre sí: la total de 13 210 mm no casa con la suma de tramos (22 100 y 22 700 mm) ni con un garaje doble. Se calibró con las medidas rotuladas de cada estancia por mínimos cuadrados: 47 px/m. La casa resulta de 21,75 × 10,0 m más terraza.</p>
+      </section>
+      <section>
+        <h3>Decisiones inferidas</h3>
+        <ul>
+          <li>El plano deja el garaje abierto al comedor: se cerró alineando el muro de cocina con el del garaje.</li>
+          <li>El símbolo «DN» y la columna de armarios se interpretan como vestidor y ropa blanca; ninguna referencia documenta otra planta.</li>
+          <li>La foto de fachada no coincide con el plano (no muestra garaje): se tomó su lenguaje, no su geometría.</li>
+          <li>El inodoro duplicado de la suite se sustituyó por una ducha; el WC rotulado se mantiene.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>Limitaciones</h3>
+        <ul>
+          <li>Orientación solar desconocida (la rosa del plano es ambigua): el sol se colocó por toma.</li>
+          <li>Mobiliario, acabados interiores y jardín son propuestas coherentes con la imagen 3, no datos.</li>
+          <li>Estancias que no coinciden con su rótulo: recibidor 3,80 × 1,88 m (rótulo 2,0 × 1,5) y terraza 5,40 × 3,60 m (rótulo 4,0 × 3,5).</li>
+        </ul>
+      </section>
+      <section style="grid-column: 1 / -1">
+        <h3>Medidas rotuladas frente a modeladas</h3>
+        <div class="tbl"><table>
+          <thead><tr><th>Estancia</th><th>Rótulo del plano</th><th>Modelo (luz libre)</th></tr></thead>
+          <tbody>
+            <tr><td>Garaje</td><td class="n">5,80 × 5,60 m</td><td class="n">5,45 × 6,90 m</td></tr>
+            <tr><td>Salón</td><td class="n">5,20 × 4,50 m</td><td class="n">5,75 × 6,03 m (abierto)</td></tr>
+            <tr><td>Cocina</td><td class="n">3,40 × 3,00 m</td><td class="n">3,40 × 3,38 m</td></tr>
+            <tr><td>Comedor</td><td class="n">3,60 × 3,20 m</td><td class="n">3,40 × 2,65 m</td></tr>
+            <tr><td>Dormitorio principal</td><td class="n">4,20 × 3,80 m</td><td class="n">4,35 × 3,57 m</td></tr>
+            <tr><td>Dormitorio 2</td><td class="n">3,20 × 3,00 m</td><td class="n">3,48 × 2,73 m</td></tr>
+            <tr><td>Estudio</td><td class="n">2,80 × 2,50 m</td><td class="n">2,98 × 2,73 m</td></tr>
+            <tr><td>Entrada</td><td class="n">2,00 × 1,80 m</td><td class="n">2,13 × 1,90 m</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="lightbox" hidden><figure style="margin:0;display:grid;justify-items:center"><img alt=""><p></p></figure></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const TOUR = {"panos": [{"id": "p01", "label": "Fachada", "file": "panos/p01.jpg", "x": 6.95, "y": -6.0, "links": [{"to": "p02", "u": 0.5, "v": 0.56914, "dist": 5.81}], "desc": "Fachada principal: revoque blanco, lamas de teca y losa volada de 0,8 m de canto, en el lenguaje de la foto de referencia.", "start": 0.5}, {"id": "p02", "label": "Porche", "file": "panos/p02.jpg", "x": 6.95, "y": -0.2, "links": [{"to": "p03", "u": 0.63013, "v": 0.74946, "dist": 2.6}, {"to": "p01", "u": 0.0, "v": 0.59478, "dist": 5.81}], "desc": "Porche cubierto con puerta pivotante de teca de 1,0 × 2,4 m y paño fijo de vidrio.", "start": 0.75}, {"id": "p03", "label": "Recibidor", "file": "panos/p03.jpg", "x": 9.2, "y": 1.1, "links": [{"to": "p04", "u": 0.50815, "v": 0.71157, "dist": 1.95}, {"to": "p02", "u": 0.21535, "v": 0.79386, "dist": 2.6}], "desc": "Recibidor de 3,80 × 1,88 m con armario empotrado de 1,8 m y consola con espejo.", "start": 0.5}, {"id": "p04", "label": "Pasillo", "file": "panos/p04.jpg", "x": 9.3, "y": 3.05, "links": [{"to": "p03", "u": 0.00815, "v": 0.71157, "dist": 1.95}, {"to": "p16", "u": 0.21663, "v": 0.6805, "dist": 2.4}, {"to": "p18", "u": 0.73249, "v": 0.63564, "dist": 3.37}, {"to": "p07", "u": 0.39758, "v": 0.62331, "dist": 3.75}, {"to": "p05", "u": 0.60281, "v": 0.61446, "dist": 4.07}, {"to": "p06", "u": 0.48292, "v": 0.58486, "dist": 5.6}], "desc": "Pasillo de distribución, abierto al salón bajo una tabica de 0,6 m.", "start": 0.5}, {"id": "p05", "label": "Salón", "file": "panos/p05.jpg", "x": 11.75, "y": 6.3, "links": [{"to": "p18", "u": 0.95179, "v": 0.64938, "dist": 3.02}, {"to": "p06", "u": 0.3535, "v": 0.62092, "dist": 3.83}, {"to": "p04", "u": 0.10281, "v": 0.61446, "dist": 4.07}, {"to": "p07", "u": 0.24154, "v": 0.60004, "dist": 4.71}, {"to": "p11", "u": 0.85147, "v": 0.59381, "dist": 5.04}, {"to": "p08", "u": 0.50137, "v": 0.58312, "dist": 5.8}], "desc": "Salón con 3,30 m de altura libre y corredera de 3,6 m a la terraza.", "start": 0.5}, {"id": "p06", "label": "Cocina", "file": "panos/p06.jpg", "x": 8.7, "y": 8.62, "links": [{"to": "p05", "u": 0.8535, "v": 0.62092, "dist": 3.83}, {"to": "p08", "u": 0.61582, "v": 0.6022, "dist": 4.66}, {"to": "p04", "u": 0.98292, "v": 0.58486, "dist": 5.6}, {"to": "p18", "u": 0.89661, "v": 0.57326, "dist": 6.53}], "desc": "Cocina con isla de mármol en cascada, fregadero doble y columnas de horno y nevera.", "start": 0.5}, {"id": "p07", "label": "Comedor", "file": "panos/p07.jpg", "x": 7.05, "y": 6.05, "links": [{"to": "p04", "u": 0.89758, "v": 0.62331, "dist": 3.75}, {"to": "p05", "u": 0.74154, "v": 0.60004, "dist": 4.71}, {"to": "p18", "u": 0.81988, "v": 0.57717, "dist": 6.19}], "desc": "Comedor para ocho junto a la cocina, con lámparas de campana.", "start": 0.72}, {"id": "p08", "label": "Terraza (alfresco)", "file": "panos/p08.jpg", "x": 11.8, "y": 12.1, "links": [{"to": "p06", "u": 0.11582, "v": 0.59973, "dist": 4.66}, {"to": "p09", "u": 0.50624, "v": 0.60848, "dist": 5.11}, {"to": "p05", "u": 0.00137, "v": 0.58107, "dist": 5.8}], "desc": "Terraza cubierta (alfresco) de 5,40 × 3,60 m con comedor y zona de estar.", "start": 0.5}, {"id": "p09", "label": "Jardín trasero", "file": "panos/p09.jpg", "x": 12.0, "y": 17.2, "links": [{"to": "p08", "u": 0.00624, "v": 0.57645, "dist": 5.11}], "desc": "Jardín trasero con césped y valla de madera.", "start": 0.0}, {"id": "p10", "label": "Estudio", "file": "panos/p10.jpg", "x": 13.45, "y": 1.95, "links": [{"to": "p18", "u": 0.42068, "v": 0.73574, "dist": 1.67}], "desc": "Estudio de 2,98 × 2,73 m con ventana horizontal a la calle.", "start": 0.9}, {"id": "p11", "label": "Distribuidor", "file": "panos/p11.jpg", "x": 15.8, "y": 3.3, "links": [{"to": "p15", "u": 0.99602, "v": 0.70782, "dist": 2.0}, {"to": "p19", "u": 0.741, "v": 0.66645, "dist": 2.65}, {"to": "p12", "u": 0.54159, "v": 0.60539, "dist": 4.45}, {"to": "p05", "u": 0.35147, "v": 0.59381, "dist": 5.04}], "desc": "Distribuidor de la zona de noche: baño, dormitorios y vestidor.", "start": 0.5}, {"id": "p12", "label": "Dormitorio principal", "file": "panos/p12.jpg", "x": 16.95, "y": 7.6, "links": [{"to": "p13", "u": 0.88417, "v": 0.62533, "dist": 3.68}, {"to": "p11", "u": 0.04159, "v": 0.60539, "dist": 4.45}], "desc": "Dormitorio principal de 4,35 × 3,57 m con vestidor de 3,5 m y salida al jardín.", "start": 0.78}, {"id": "p13", "label": "Baño en suite", "file": "panos/p13.jpg", "x": 19.4, "y": 4.85, "links": [{"to": "p12", "u": 0.38417, "v": 0.62533, "dist": 3.68}], "desc": "Baño en suite con bañera, ducha de obra y doble lavabo.", "start": 0.5}, {"id": "p14", "label": "Dormitorio 2", "file": "panos/p14.jpg", "x": 18.95, "y": 1.75, "links": [{"to": "p19", "u": 0.45447, "v": 0.72671, "dist": 1.77}], "desc": "Dormitorio 2 de 3,48 × 2,73 m con armario empotrado.", "start": 0.75}, {"id": "p15", "label": "Baño", "file": "panos/p15.jpg", "x": 15.85, "y": 1.3, "links": [{"to": "p11", "u": 0.49602, "v": 0.70782, "dist": 2.0}], "desc": "Baño con ducha de mampara y lavabo suspendido.", "start": 0.02}, {"id": "p16", "label": "Entrada desde garaje", "file": "panos/p16.jpg", "x": 6.95, "y": 2.55, "links": [{"to": "p04", "u": 0.71663, "v": 0.6805, "dist": 2.4}, {"to": "p17", "u": 0.28196, "v": 0.79441, "dist": 5.19}], "desc": "Entrada desde el garaje con banco, perchero y cestas.", "start": 0.5}, {"id": "p17", "label": "Garaje", "file": "panos/p17.jpg", "x": 2.95, "y": 5.85, "links": [{"to": "p16", "u": 0.88036, "v": 0.61114, "dist": 5.19}], "desc": "Garaje doble de 5,45 × 6,90 m con muebles de almacenaje.", "start": 0.0}, {"id": "p18", "label": "Acceso al estudio", "file": "panos/p18.jpg", "x": 12.65, "y": 3.42, "links": [{"to": "p10", "u": 0.92068, "v": 0.73574, "dist": 1.67}, {"to": "p05", "u": 0.45179, "v": 0.64938, "dist": 3.02}, {"to": "p04", "u": 0.23249, "v": 0.63564, "dist": 3.37}, {"to": "p07", "u": 0.31988, "v": 0.57717, "dist": 6.19}, {"to": "p06", "u": 0.39661, "v": 0.57326, "dist": 6.53}], "desc": "Acceso al estudio y armarios del pasillo.", "start": 0.02}, {"id": "p19", "label": "Pasillo dormitorios", "file": "panos/p19.jpg", "x": 18.45, "y": 3.45, "links": [{"to": "p14", "u": 0.95447, "v": 0.72671, "dist": 1.77}, {"to": "p11", "u": 0.241, "v": 0.66645, "dist": 2.65}], "desc": "Pasillo hacia el dormitorio 2 y el WC de la suite.", "start": 0.0}], "planta": {"cx": 11.0, "cy": 5.5, "ortho": 28.0, "w": 1400, "h": 1300}};
+const GALLERY = [{"file": "galeria/comparacion_fachada.jpg", "title": "Foto de referencia frente al modelo", "note": "Misma composición: losa volada, madera, carpintería negra."}, {"file": "galeria/comparacion_corte.jpg", "title": "Imagen 3 frente al corte del modelo", "note": "Corte tipo maqueta a 2,35 m con todo el mobiliario."}, {"file": "galeria/comparacion_planta.jpg", "title": "Plano original sobre el modelo", "note": "Líneas rojas: plano de referencia a escala 47 px/m."}, {"file": "galeria/planta_cotas.jpg", "title": "Planta acotada", "note": "Medidas libres modeladas frente a las rotuladas."}, {"file": "galeria/isometrico_corte.jpg", "title": "Corte isométrico", "note": "Vista tipo maqueta de toda la vivienda."}, {"file": "galeria/fachada_foto.jpg", "title": "Fachada principal", "note": "Encuadre equivalente a la fotografía."}, {"file": "galeria/entrada.jpg", "title": "Entrada", "note": "Porche, voladizo y paño de lamas de teca."}, {"file": "galeria/fachada_34.jpg", "title": "Fachada en tres cuartos", "note": "Garaje, acceso y jardín delantero."}, {"file": "galeria/aerea_frontal.jpg", "title": "Vista aérea", "note": "Volúmenes a dos alturas y cubiertas planas."}, {"file": "galeria/aerea_trasera.jpg", "title": "Vista aérea trasera", "note": "Terraza cubierta y jardín."}, {"file": "galeria/trasera_alfresco.jpg", "title": "Terraza al anochecer", "note": "Luz interior encendida, toma de presentación."}, {"file": "galeria/trasera_dia.jpg", "title": "Terraza de día", "note": "Fachada trasera con correderas."}, {"file": "galeria/detalle_cocina.jpg", "title": "Detalle: isla de cocina", "note": "Mármol en cascada, fregadero bajo encimera y grifería negra."}, {"file": "galeria/detalle_entrada.jpg", "title": "Detalle: puerta de entrada", "note": "Teca en vertical, tirador negro y lamas del porche."}, {"file": "galeria/detalle_bano.jpg", "title": "Detalle: lavabo de la suite", "note": "Lavabo sobre encimera de mármol y alicatado."}, {"file": "galeria/salon.jpg", "title": "Salón", "note": "Techo a 3,30 m y ventanal corredero."}, {"file": "galeria/cocina.jpg", "title": "Cocina", "note": "Isla de mármol con fregadero doble."}, {"file": "galeria/comedor.jpg", "title": "Comedor y cocina", "note": "Planta abierta vista desde el salón."}, {"file": "galeria/dormitorio_principal.jpg", "title": "Dormitorio principal", "note": "Ventana alta sobre el cabecero."}, {"file": "galeria/bano_suite.jpg", "title": "Baño en suite", "note": "Doble lavabo y bañera."}, {"file": "galeria/estudio.jpg", "title": "Estudio", "note": "Escritorio bajo la ventana y biblioteca."}, {"file": "galeria/recibidor.jpg", "title": "Recibidor", "note": "Armario, consola y espejo."}, {"file": "galeria/dormitorio_2.jpg", "title": "Dormitorio 2", "note": "Cama doble y cómoda."}, {"file": "galeria/bano.jpg", "title": "Baño", "note": "Lavabo suspendido y ducha."}, {"file": "galeria/planta.jpg", "title": "Planta sin cubierta", "note": "Vista cenital ortográfica del modelo."}];
+
+(() => {
+  const view = document.getElementById('view');
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  view.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, 1, 1, 1100);
+  const geo = new THREE.SphereGeometry(500, 72, 40);
+  geo.scale(-1, 1, 1);
+  const mkMat = () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 1, depthWrite: false });
+  const sphereA = new THREE.Mesh(geo, mkMat());
+  const sphereB = new THREE.Mesh(geo, mkMat());
+  sphereB.material.opacity = 0;
+  scene.add(sphereA, sphereB);
+
+  const byId = Object.fromEntries(TOUR.panos.map(p => [p.id, p]));
+  const cache = new Map();
+  const loader = new THREE.TextureLoader();
+  const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  function tex(p) {
+    if (!cache.has(p.id)) {
+      cache.set(p.id, new Promise((res, rej) => loader.load(p.file, t => {
+        t.encoding = THREE.sRGBEncoding; t.anisotropy = maxAniso; res(t);
+      }, undefined, rej)));
+    }
+    return cache.get(p.id);
+  }
+
+  // u,v de la imagen equirectangular -> dirección en la esfera (coherente con SphereGeometry escalada en -x)
+  function dirLonLat(lon, lat) {
+    const phi = THREE.MathUtils.degToRad(lon), theta = THREE.MathUtils.degToRad(90 - lat);
+    return new THREE.Vector3(Math.cos(phi) * Math.sin(theta), Math.cos(theta), Math.sin(phi) * Math.sin(theta));
+  }
+  let lon = 180, lat = -4, fov = 75, cur = null, busy = false, auto = false, idleT = performance.now();
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function resize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize); resize();
+
+  // ---------- interacción
+  const ptrs = new Map(); let pinch0 = 0, fov0 = fov, dragged = false;
+  view.addEventListener('pointerdown', e => {
+    view.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    view.classList.add('drag'); dragged = false; idleT = performance.now();
+    if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); fov0 = fov; }
+  });
+  view.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    const p = ptrs.get(e.pointerId), dx = e.clientX - p.x, dy = e.clientY - p.y;
+    if (ptrs.size === 1) {
+      const k = fov / window.innerHeight;
+      lon -= dx * k * 1.15; lat = Math.max(-85, Math.min(85, lat + dy * k * 1.15));
+      if (Math.abs(dx) + Math.abs(dy) > 2) dragged = true;
+    }
+    p.x = e.clientX; p.y = e.clientY;
+    if (ptrs.size === 2) {
+      const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinch0) setFov(fov0 * pinch0 / d);
+    }
+    idleT = performance.now();
+  });
+  const up = e => { ptrs.delete(e.pointerId); if (!ptrs.size) view.classList.remove('drag'); if (ptrs.size < 2) pinch0 = 0; };
+  view.addEventListener('pointerup', up); view.addEventListener('pointercancel', up);
+  view.addEventListener('wheel', e => { e.preventDefault(); setFov(fov + e.deltaY * 0.04); idleT = performance.now(); }, { passive: false });
+  function setFov(f) { fov = Math.max(32, Math.min(95, f)); camera.fov = fov; camera.updateProjectionMatrix(); }
+  window.addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('input,textarea')) return;
+    if (e.key === 'ArrowLeft') lon -= 6; else if (e.key === 'ArrowRight') lon += 6;
+    else if (e.key === 'ArrowUp') lat = Math.min(85, lat + 5); else if (e.key === 'ArrowDown') lat = Math.max(-85, lat - 5);
+    else if (e.key === 'Escape') closeSheets();
+    idleT = performance.now();
+  });
+
+  // ---------- puntos de salto
+  const hsLayer = document.getElementById('hotspots');
+  let hsEls = [];
+  function buildHotspots(p) {
+    hsLayer.innerHTML = ''; hsEls = [];
+    for (const l of p.links) {
+      const t = byId[l.to]; if (!t) continue;
+      const b = document.createElement('button');
+      b.className = 'hs'; b.type = 'button';
+      b.setAttribute('aria-label', 'Ir a ' + t.label);
+      b.innerHTML = '<span class="ring"></span><span class="tag"></span>';
+      b.querySelector('.tag').textContent = t.label;
+      b.addEventListener('click', () => go(l.to, l.u));
+      hsLayer.appendChild(b);
+      hsEls.push({ el: b, pos: dirLonLat(l.u * 360, (0.5 - l.v) * 180).multiplyScalar(400), u: l.u });
+    }
+  }
+  const v3 = new THREE.Vector3();
+  function placeHotspots() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const fwd = dirLonLat(lon, lat);
+    let bestI = -1, bestD = 1e9;
+    hsEls.forEach((hs, i) => {
+      v3.copy(hs.pos);
+      const facing = v3.clone().normalize().dot(fwd);
+      v3.project(camera);
+      const vis = facing > 0.05 && v3.z < 1;
+      hs.el.style.display = vis ? '' : 'none';
+      if (!vis) return;
+      const x = (v3.x * 0.5 + 0.5) * w, y = (-v3.y * 0.5 + 0.5) * h;
+      hs.el.style.left = x + 'px'; hs.el.style.top = y + 'px';
+      const s = Math.max(0.55, Math.min(1.15, 1.25 - Math.abs(v3.y) * 0.4));
+      hs.el.querySelector('.ring').style.scale = s;
+      const d = Math.hypot(x - w / 2, y - h / 2);
+      if (d < bestD) { bestD = d; bestI = i; }
+      hs.el.classList.remove('near');
+    });
+    if (bestI >= 0 && bestD < Math.min(w, h) * 0.32) hsEls[bestI].el.classList.add('near');
+  }
+
+  // ---------- navegación
+  const fade = document.getElementById('fade'), loading = document.getElementById('loading');
+  async function go(id, travelU) {
+    if (busy || (cur && cur.id === id)) return;
+    busy = true;
+    const p = byId[id];
+    const t0 = performance.now();
+    const ready = tex(p);
+    if (cur && !reduce) {
+      // pequeño "paso" hacia el destino: zoom suave mientras carga
+      const f0 = fov;
+      await new Promise(r => {
+        const step = now => { const k = Math.min(1, (now - t0) / 260); setFov(f0 - 14 * k); k < 1 ? requestAnimationFrame(step) : r(); };
+        requestAnimationFrame(step);
+      });
+    }
+    let texture;
+    try { texture = await ready; } catch (err) { loading.textContent = 'No se pudo cargar ' + p.file; loading.hidden = false; busy = false; return; }
+    loading.hidden = true;
+    sphereB.material.map = texture; sphereB.material.needsUpdate = true; sphereB.material.opacity = 0;
+    if (travelU !== undefined) { lon = travelU * 360; lat = -4; }
+    else if (typeof p.start === 'number') { lon = p.start * 360; lat = -4; }
+    setFov(75);
+    const t1 = performance.now(), dur = reduce ? 1 : 420;
+    await new Promise(r => {
+      const step = now => {
+        const k = Math.min(1, (now - t1) / dur);
+        sphereB.material.opacity = k; sphereA.material.opacity = 1 - k;
+        k < 1 ? requestAnimationFrame(step) : r();
+      };
+      requestAnimationFrame(step);
+    });
+    sphereA.material.map = texture; sphereA.material.opacity = 1; sphereA.material.needsUpdate = true; sphereB.material.opacity = 0;
+    cur = p; busy = false;
+    buildHotspots(p); updateUI();
+    p.links.forEach(l => byId[l.to] && tex(byId[l.to]));
+    try { localStorage.setItem('recorrido_ultimo', id); } catch (e) {}
+  }
+
+  // ---------- interfaz
+  const room = document.getElementById('room'), desc = document.getElementById('desc'), coords = document.getElementById('coords');
+  const rail = document.getElementById('rail');
+  TOUR.panos.forEach(p => {
+    const c = document.createElement('button');
+    c.className = 'chip'; c.type = 'button'; c.textContent = p.label; c.dataset.id = p.id;
+    c.addEventListener('click', () => go(p.id));
+    rail.appendChild(c);
+  });
+  const mapwrap = document.getElementById('mapwrap'), cone = document.getElementById('cone');
+  const P = TOUR.planta;
+  const toMap = (x, y) => [50 + (x - P.cx) / P.ortho * 100, 50 - (y - P.cy) / (P.ortho * P.h / P.w) * 100];
+  TOUR.panos.forEach(p => {
+    const d = document.createElement('button');
+    d.className = 'dot'; d.type = 'button'; d.title = p.label; d.setAttribute('aria-label', p.label); d.dataset.id = p.id;
+    const [mx, my] = toMap(p.x, p.y); d.style.left = mx + '%'; d.style.top = my + '%';
+    d.addEventListener('click', () => go(p.id));
+    mapwrap.appendChild(d);
+  });
+  function updateUI() {
+    room.textContent = cur.label; desc.textContent = cur.desc || '';
+    coords.textContent = `x ${cur.x.toFixed(2)} m · y ${cur.y.toFixed(2)} m · cámara a 1,55 m del suelo`;
+    rail.querySelectorAll('.chip').forEach(c => {
+      const on = c.dataset.id === cur.id; c.setAttribute('aria-current', on ? 'true' : 'false');
+      if (on) c.scrollIntoView({ block: 'nearest', inline: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    });
+    mapwrap.querySelectorAll('.dot').forEach(d => d.classList.toggle('on', d.dataset.id === cur.id));
+    const [mx, my] = toMap(cur.x, cur.y); cone.style.left = mx + '%'; cone.style.top = my + '%';
+  }
+
+  // ---------- capas y botones
+  const bMap = document.getElementById('bMap'), map = document.getElementById('map');
+  bMap.addEventListener('click', () => { map.hidden = !map.hidden; bMap.setAttribute('aria-pressed', String(!map.hidden)); });
+  if (window.matchMedia('(max-width: 640px)').matches) { map.hidden = true; bMap.setAttribute('aria-pressed', 'false'); }
+  window.addEventListener('hashchange', () => { const h = location.hash.slice(1); if (byId[h]) go(h); });
+  const sheets = { gallery: document.getElementById('gallery'), report: document.getElementById('report') };
+  const bGal = document.getElementById('bGal'), bRep = document.getElementById('bRep');
+  function openSheet(k) { closeSheets(); sheets[k].hidden = false; (k === 'gallery' ? bGal : bRep).setAttribute('aria-pressed', 'true'); }
+  function closeSheets() {
+    Object.values(sheets).forEach(s => s.hidden = true); bGal.setAttribute('aria-pressed', 'false'); bRep.setAttribute('aria-pressed', 'false');
+    lb.hidden = true;
+  }
+  bGal.addEventListener('click', () => sheets.gallery.hidden ? openSheet('gallery') : closeSheets());
+  bRep.addEventListener('click', () => sheets.report.hidden ? openSheet('report') : closeSheets());
+  document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeSheets));
+  const gal = document.getElementById('gal'), lb = document.getElementById('lightbox');
+  GALLERY.forEach(g => {
+    const b = document.createElement('button'); b.className = 'thumb'; b.type = 'button';
+    b.innerHTML = '<img loading="lazy" alt=""><b></b><span></span>';
+    b.querySelector('img').src = g.file; b.querySelector('img').alt = g.title;
+    b.querySelector('b').textContent = g.title; b.querySelector('span').textContent = g.note;
+    b.addEventListener('click', () => { lb.querySelector('img').src = g.file; lb.querySelector('img').alt = g.title; lb.querySelector('p').textContent = g.title + ' · ' + g.note; lb.hidden = false; });
+    gal.appendChild(b);
+  });
+  lb.addEventListener('click', () => lb.hidden = true);
+  const bAuto = document.getElementById('bAuto');
+  bAuto.addEventListener('click', () => { auto = !auto; bAuto.setAttribute('aria-pressed', String(auto)); idleT = 0; });
+  const bFull = document.getElementById('bFull');
+  bFull.addEventListener('click', async () => {
+    try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen(); else await document.exitFullscreen(); }
+    catch (e) { bFull.textContent = 'No disponible'; }
+  });
+  document.addEventListener('fullscreenchange', () => bFull.setAttribute('aria-pressed', String(!!document.fullscreenElement)));
+  setTimeout(() => { const h = document.getElementById('hint'); h.style.opacity = '0'; setTimeout(() => h.hidden = true, 700); }, 6500);
+
+  // ---------- bucle
+  const headingEl = document.getElementById('heading');
+  function frame(now) {
+    if (auto && now - idleT > 1200 && !busy) lon += 0.035;
+    lat = Math.max(-85, Math.min(85, lat));
+    camera.lookAt(dirLonLat(lon, lat));
+    renderer.render(scene, camera);
+    placeHotspots();
+    const az = ((lon - 180) % 360 + 360) % 360;
+    cone.style.transform = `rotate(${az}deg)`;
+    headingEl.textContent = `rumbo ${az.toFixed(0)}°`;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  let start = TOUR.panos[0].id;
+  try { const s = localStorage.getItem('recorrido_ultimo'); if (s && byId[s]) start = s; } catch (e) {}
+  const hashId = (location.hash || '').slice(1);
+  if (byId[hashId]) start = hashId;
+  go(start);
+})();
+</script>
+
+</html>
